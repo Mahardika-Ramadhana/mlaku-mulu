@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards, Post, Body } from '@nestjs/common';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -10,6 +10,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { AiService } from '../ai/ai.service';
+import { GenerateItineraryDto } from './dto/generate-itinerary.dto';
 
 interface RequestUser {
   id: string;
@@ -24,7 +26,10 @@ interface RequestUser {
 @Roles('tourist')
 @Controller('tourists')
 export class TouristsController {
-  constructor(private readonly touristsService: TouristsService) {}
+  constructor(
+    private readonly touristsService: TouristsService,
+    private readonly aiService: AiService,
+  ) {}
 
   @Get('my-trips')
   @ApiOperation({ summary: 'Melihat riwayat perjalanan diri sendiri' })
@@ -65,5 +70,26 @@ export class TouristsController {
   @ApiResponse({ status: 403, description: 'Bukan seorang turis.' })
   getMyTrips(@CurrentUser() user: RequestUser) {
     return this.touristsService.getMyTrips(user.id);
+  }
+
+  @Post('ai/generate-itinerary')
+  @ApiOperation({
+    summary: 'Membuat rekomendasi jadwal perjalanan otomatis berbasis AI',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Rencana perjalanan AI berhasil digenerate.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Token tidak valid atau tidak ada.',
+  })
+  @ApiResponse({ status: 403, description: 'Bukan seorang turis.' })
+  generateItinerary(@Body() dto: GenerateItineraryDto) {
+    return this.aiService.generateItinerary(
+      dto.destination,
+      dto.durationDays,
+      dto.preferences,
+    );
   }
 }
