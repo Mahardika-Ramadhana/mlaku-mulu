@@ -19,6 +19,7 @@ import { CreateTouristDto } from './dto/create-tourist.dto';
 import { UpdateTouristDto } from './dto/update-tourist.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
+import { CreateAiTripDto } from './dto/create-ai-trip.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -30,6 +31,18 @@ import { Roles } from '../auth/roles.decorator';
 @Controller('employees')
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
+
+  @Get('dashboard')
+  @ApiOperation({
+    summary: 'Mendapatkan statistik ringkasan dan analisis dashboard pegawai',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Berhasil mengambil statistik dashboard.',
+  })
+  getDashboardStats() {
+    return this.employeesService.getDashboardStats();
+  }
 
   @Get('tourists')
   @ApiOperation({ summary: 'Mendapatkan daftar semua turis' })
@@ -100,5 +113,22 @@ export class EmployeesController {
   @ApiResponse({ status: 404, description: 'Perjalanan tidak ditemukan.' })
   deleteTrip(@Param('tripId') tripId: string) {
     return this.employeesService.deleteTrip(tripId);
+  }
+
+  @Post('tourists/:id/ai-trip')
+  @ApiOperation({
+    summary:
+      'Membuat perjalanan (Trip) untuk turis tertentu dengan rencana berbasis AI',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Trip berbasis AI berhasil ditambahkan.',
+  })
+  @ApiResponse({ status: 404, description: 'Turis tidak ditemukan.' })
+  addAiTripToTourist(
+    @Param('id') id: string,
+    @Body() createAiTripDto: CreateAiTripDto,
+  ) {
+    return this.employeesService.addAiTripToTourist(id, createAiTripDto);
   }
 }

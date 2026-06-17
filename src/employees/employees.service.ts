@@ -10,10 +10,15 @@ import { CreateTouristDto } from './dto/create-tourist.dto';
 import { UpdateTouristDto } from './dto/update-tourist.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
+import { AiService } from '../ai/ai.service';
+import { CreateAiTripDto } from './dto/create-ai-trip.dto';
 
 @Injectable()
 export class EmployeesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private aiService: AiService,
+  ) {}
 
   async createTourist(dto: CreateTouristDto) {
     const existingEmployee = await this.prisma.employee.findUnique({
@@ -174,5 +179,159 @@ export class EmployeesService {
 
     await this.prisma.trip.delete({ where: { id: tripId } });
     return { message: 'Perjalanan berhasil dihapus' };
+  }
+
+  async addAiTripToTourist(touristId: string, dto: CreateAiTripDto) {
+    const tourist = await this.prisma.tourist.findUnique({
+      where: { id: touristId },
+    });
+    if (!tourist) {
+      throw new NotFoundException('Turis tidak ditemukan');
+    }
+
+    // 1. Generate Rencana Perjalanan menggunakan AI
+    const itinerary: unknown = await this.aiService.generateItinerary(
+      dto.destination,
+      dto.durationDays,
+      dto.preferences,
+    );
+
+    // 2. Hitung tanggal berakhir berdasarkan durasi hari
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + dto.durationDays);
+
+    // 3. Simpan trip ke database
+    const trip = await this.prisma.trip.create({
+      data: {
+        touristId,
+        startDate,
+        endDate,
+        destination: itinerary as Prisma.InputJsonValue,
+      },
+    });
+
+    return trip;
+  }
+
+  async getDashboardStats() {
+    const now = new Date();
+
+    // 1. Hitung total turis dan total perjalanan
+    const totalTourists = await this.prisma.tourist.count();
+    const totalTrips = await this.prisma.trip.count();
+
+    // 2. Status perjalanan (Active, Upcoming, Completed)
+    const activeTrips = await this.prisma.trip.count({
+      where: {
+        startDate: { lte: now },
+        endDate: { gte: now },
+      },
+    });
+
+    const upcomingTrips = await this.prisma.trip.count({
+      where: {
+        startDate: { gt: now },
+      },
+    });
+
+    const completedTrips = await this.prisma.trip.count({
+      where: {
+        endDate: { lt: now },
+      },
+    });
+
+    // 3. Cari 5 destinasi paling populer
+    const trips = await this.prisma.trip.findMany({
+      select: { destination: true },
+    });
+
+    const destinationCounts: Record<string, number> = {};
+    for (const trip of trips) {
+      let destName = '';
+      const dest = trip.destination;
+
+      if (typeof dest === 'string') {
+        destName = dest;
+      } else if (dest && typeof dest === 'object' && !Array.isArray(dest)) {
+        const d = dest as {
+          city?: string;
+          country?: string;
+          city_name?: string;
+        };
+        if (d.city) {
+          destName = d.city + (d.country ? `, ${d.country}` : '');
+        } else if (d.city_name) {
+          destName = d.city_name;
+        } else {
+          destName = JSON.stringify(dest);
+        }
+      }
+
+      destName = destName.trim();
+      if (destName) {
+        destinationCounts[destName] = (destinationCounts[destName] || 0) + 1;
+      }
+    }
+
+    const popularDestinations = Object.entries(destinationCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // 4. Tren pendaftaran turis baru (6 bulan terakhir)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const newTourists = await this.prisma.tourist.findMany({
+      where: {
+        createdAt: { gte: sixMonthsAgo },
+      },
+      select: { createdAt: true },
+    });
+
+    const monthlyStats: Record<string, number> = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const label = d.toLocaleString('id-ID', {
+        month: 'long',
+        year: 'numeric',
+      });
+      monthlyStats[label] = 0;
+    }
+
+    for (const t of newTourists) {
+      const label = t.createdAt.toLocaleString('id-ID', {
+        month: 'long',
+        year: 'numeric',
+      });
+      if (monthlyStats[label] !== undefined) {
+        monthlyStats[label]++;
+      }
+    }
+
+    const touristRegistrationTrend = Object.entries(monthlyStats).map(
+      ([month, count]) => ({
+        month,
+        count,
+      }),
+    );
+
+    return {
+      overview: {
+        totalTourists,
+        totalTrips,
+      },
+      tripStatus: {
+        active: activeTrips,
+        upcoming: upcomingTrips,
+        completed: completedTrips,
+      },
+      popularDestinations,
+      touristRegistrationTrend,
+    };
   }
 }
