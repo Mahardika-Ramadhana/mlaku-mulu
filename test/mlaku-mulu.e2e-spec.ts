@@ -246,4 +246,65 @@ describe('Biro Perjalanan Mlaku-Mulu (e2e)', () => {
         });
     });
   });
+
+  describe('Fitur Tambahan - AI Travel Planner & Dashboard (e2e)', () => {
+    it('turis harus bisa membuat rencana perjalanan otomatis via AI (POST /api/tourists/ai/generate-itinerary)', () => {
+      return request(app.getHttpServer())
+        .post('/api/tourists/ai/generate-itinerary')
+        .set('Authorization', `Bearer ${touristToken}`)
+        .send({
+          destination: 'Bandung',
+          durationDays: 2,
+          preferences: 'Kopi dan pemandangan alam',
+        })
+        .expect(201)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('city', 'Bandung');
+          expect(res.body).toHaveProperty('durationDays', 2);
+          expect(res.body).toHaveProperty('itinerary');
+          expect(res.body.itinerary.length).toBe(2);
+        });
+    });
+
+    it('pegawai harus bisa membuat trip untuk turis menggunakan AI (POST /api/employees/tourists/:id/ai-trip)', () => {
+      return request(app.getHttpServer())
+        .post(`/api/employees/tourists/${touristId}/ai-trip`)
+        .set('Authorization', `Bearer ${employeeToken}`)
+        .send({
+          startDate: '2026-07-01T08:00:00Z',
+          destination: 'Lombok',
+          durationDays: 3,
+          preferences: 'Pantai dan diving',
+        })
+        .expect(201)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('id');
+          expect(res.body).toHaveProperty('touristId', touristId);
+          expect(res.body).toHaveProperty('destination');
+          expect(res.body.destination).toHaveProperty('city', 'Lombok');
+        });
+    });
+
+    it('pegawai harus bisa mengakses data statistik dashboard (GET /api/employees/dashboard)', () => {
+      return request(app.getHttpServer())
+        .get('/api/employees/dashboard')
+        .set('Authorization', `Bearer ${employeeToken}`)
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toHaveProperty('overview');
+          expect(res.body.overview).toHaveProperty('totalTourists');
+          expect(res.body.overview).toHaveProperty('totalTrips');
+          expect(res.body).toHaveProperty('tripStatus');
+          expect(res.body).toHaveProperty('popularDestinations');
+          expect(res.body).toHaveProperty('touristRegistrationTrend');
+        });
+    });
+
+    it('turis tidak boleh mengakses dashboard pegawai (GET /api/employees/dashboard)', () => {
+      return request(app.getHttpServer())
+        .get('/api/employees/dashboard')
+        .set('Authorization', `Bearer ${touristToken}`)
+        .expect(403);
+    });
+  });
 });
